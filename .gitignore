@@ -1,0 +1,96 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+Miniconda3*/
+miniconda*/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+sandbox_recommendations.db
+stock_recommendations.db
+nse_stock_scanner.db
+
+# Log files
+*.log
+technical_indicators.log
+
+# Cache and temporary files
+.cache/
+data/cache/
+*.tmp
+*.temp
+
+# Configuration files with sensitive data
+config.ini
+.env
+secrets.json
+
+# Output files
+*.csv
+*.xlsx
+reports/
+output/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Conda installer
+Miniconda3-latest-MacOSX-arm64.sh
+*.sh
+
+# Backup files
+*.bak
+*.backup
+
+# Test files
+test_*.py
+*_test.py 
