@@ -1381,7 +1381,7 @@ class SandboxAnalyzer:
             print(f"   📊 Sold {sells_count} positions due to score threshold")
     
     def _generate_dynamic_analysis_report(self, positions, start_date, threshold):
-        """Generate comprehensive analysis report - NO DB OPERATIONS"""
+        """Generate comprehensive analysis report with performance progression - NO DB OPERATIONS"""
         print(f"\n{'='*100}")
         print(f"📊 DYNAMIC THRESHOLD ANALYSIS REPORT")
         print(f"{'='*100}")
@@ -1396,6 +1396,50 @@ class SandboxAnalyzer:
         print(f"\n📊 POSITION SUMMARY:")
         print(f"🟢 Active Positions: {len(active_positions)}")
         print(f"🔴 Sold Positions: {len(sold_positions)}")
+        
+        # NEW: Performance Timeline - Show progression across each period
+        print(f"\n📈 PERFORMANCE TIMELINE:")
+        print(f"{'='*80}")
+        
+        # Get all unique periods from performance history
+        all_periods = set()
+        for pos in positions.values():
+            for record in pos['performance_history']:
+                all_periods.add((record['date'], record['period_name']))
+        
+        # Sort periods chronologically
+        sorted_periods = sorted(all_periods, key=lambda x: x[0])
+        
+        for period_date, period_name in sorted_periods:
+            period_date_str = period_date.strftime('%Y-%m-%d') if hasattr(period_date, 'strftime') else str(period_date)
+            print(f"\n📅 {period_name} ({period_date_str}):")
+            print(f"{'Symbol':<12} {'Price':<8} {'Score':<6} {'Return':<8} {'Status'}")
+            print("-" * 55)
+            
+            # Show performance for each stock in this period
+            period_active = 0
+            period_sold = 0
+            
+            for symbol, pos in positions.items():
+                # Find the record for this period
+                period_record = next((r for r in pos['performance_history'] 
+                                    if r['date'] == period_date), None)
+                
+                if period_record:
+                    return_pct = period_record['return_pct']
+                    price = period_record['price']
+                    score = period_record.get('score', 'N/A')
+                    
+                    if period_record['is_sold']:
+                        status = f"🔴 SOLD (Score: {score} < {threshold})"
+                        period_sold += 1
+                    else:
+                        status = "🟢 ACTIVE"
+                        period_active += 1
+                    
+                    print(f"{symbol:<12} ₹{price:<7.2f} {score:<6} {return_pct:>+6.2f}% {status}")
+            
+            print(f"\n   📊 Period Summary: {period_active} Active, {period_sold} Sold")
         
         # P&L Summary
         total_invested = sum(pos['entry_price'] for pos in positions.values())
@@ -1415,30 +1459,38 @@ class SandboxAnalyzer:
         total_pnl = total_current_value - total_invested
         total_return_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0
         
-        print(f"\n💰 P&L SUMMARY:")
+        print(f"\n💰 OVERALL P&L SUMMARY:")
+        print(f"{'='*50}")
         print(f"💵 Total Invested:    ₹{total_invested:,.2f}")
         print(f"💰 Current Value:     ₹{total_current_value:,.2f}")
         print(f"🟢 Total P&L:         ₹{total_pnl:+,.2f}")
         print(f"📊 Total Return:      {total_return_pct:+.2f}%")
         
-        # Show sold positions
+        # Show sold positions details
         if sold_positions:
-            print(f"\n🔴 SOLD POSITIONS:")
-            print(f"{'Symbol':<12} {'Entry':<8} {'Sell':<8} {'P&L':<10} {'Return':<8} {'Days':<5} {'Reason'}")
-            print("-" * 70)
+            print(f"\n🔴 DETAILED SOLD POSITIONS:")
+            print(f"{'='*80}")
+            print(f"{'Symbol':<12} {'Entry':<8} {'Sell':<8} {'P&L':<10} {'Return':<8} {'Days':<5} {'Sell Date':<12} {'Reason'}")
+            print("-" * 85)
             
             for pos in sold_positions:
+                sell_date_str = pos.get('sell_date', 'N/A')
+                if hasattr(sell_date_str, 'strftime'):
+                    sell_date_str = sell_date_str.strftime('%Y-%m-%d')
+                
                 print(f"{pos['symbol']:<12} "
                       f"₹{pos['entry_price']:<7.2f} "
                       f"₹{pos.get('sell_price', 0):<7.2f} "
                       f"₹{pos.get('total_pnl', 0):>+8.2f} "
                       f"{pos.get('total_return_pct', 0):>+6.2f}% "
                       f"{pos.get('days_held', 0):<5} "
+                      f"{sell_date_str:<12} "
                       f"{pos.get('sell_reason', 'N/A')}")
         
         # Show active positions current status
         if active_positions:
-            print(f"\n🟢 ACTIVE POSITIONS (Current Status):")
+            print(f"\n🟢 CURRENT ACTIVE POSITIONS:")
+            print(f"{'='*70}")
             print(f"{'Symbol':<12} {'Entry':<8} {'Current':<8} {'P&L':<10} {'Return':<8} {'Sector'}")
             print("-" * 75)
             
@@ -1461,12 +1513,70 @@ class SandboxAnalyzer:
                   (pos['is_active'] and pos['performance_history'] and 
                    ((pos['performance_history'][-1]['price'] - pos['entry_price']) / pos['entry_price'] * 100) > 0)]
         
-        print(f"\n📊 PERFORMANCE STATISTICS:")
+        print(f"\n📊 FINAL PERFORMANCE STATISTICS:")
+        print(f"{'='*40}")
         print(f"🟢 Winners: {len(winners)} positions")
         print(f"🔴 Others:  {len(all_positions) - len(winners)} positions")
         print(f"📊 Win Rate: {len(winners)/len(all_positions)*100:.1f}%")
         
         print(f"\n✅ Dynamic threshold analysis completed! (Read-only mode)")
+
+    def get_stock_price_and_score(self, symbol, target_date, period_name):
+        """
+        Get current price and score for a stock on a specific date
+        Used by dynamic threshold analysis for tracking performance
+        
+        Args:
+            symbol: Stock symbol
+            target_date: Target date (can be today or historical Friday)
+            period_name: Human readable period name (for logging)
+            
+        Returns:
+            tuple: (current_price, current_score) or (0, None) if failed
+        """
+        try:
+            yahoo_symbol = f"{symbol}.NS"
+            ticker = yf.Ticker(yahoo_symbol)
+            
+            # If it's today, get current data
+            if period_name == "Today":
+                current_data = ticker.history(period="1d")
+                if current_data.empty:
+                    return 0, None
+                current_price = current_data['Close'].iloc[-1]
+                
+                # Get current analysis
+                analysis_result = self.analyzer.calculate_overall_score_silent(yahoo_symbol)
+                current_score = analysis_result['total_score'] if analysis_result else None
+                
+            else:
+                # For historical dates, check if we have it in database first
+                target_date_str = target_date.strftime('%Y-%m-%d')
+                
+                # Try to get from database
+                db_result = self.db.get_friday_strong_stocks_from_table(target_date_str, threshold=0, limit=None)
+                stock_in_db = next((s for s in db_result if s['symbol'] == symbol), None)
+                
+                if stock_in_db:
+                    current_price = stock_in_db['friday_price']
+                    current_score = stock_in_db['friday_score']
+                else:
+                    # Fallback: calculate using historical data
+                    friday_date_obj = datetime.combine(target_date, datetime.min.time())
+                    analysis_results = self.analyze_stock_for_multiple_fridays(symbol, [friday_date_obj])
+                    
+                    if analysis_results and target_date_str in analysis_results:
+                        result = analysis_results[target_date_str]
+                        current_price = result['price']
+                        current_score = result['total_score']
+                    else:
+                        return 0, None
+            
+            return float(current_price), current_score
+            
+        except Exception as e:
+            print(f"   ⚠️ Error getting price/score for {symbol}: {str(e)}")
+            return 0, None
 
 def main():
     """Main function for sandbox analyzer - Simplified version"""
