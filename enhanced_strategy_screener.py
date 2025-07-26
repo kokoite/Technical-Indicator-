@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from buy_sell_signal_analyzer import BuySellSignalAnalyzer
 import pandas as pd
 from datetime import datetime
+import random
 
 class EnhancedStrategyScreener:
     """
@@ -107,8 +108,8 @@ class EnhancedStrategyScreener:
                 if result and result['total_score'] >= min_score:
                     results.append(result)
                 
-                # Small delay to avoid overwhelming APIs
-                time.sleep(0.5)
+                # Optimized delay like sandbox_analyzer (Yahoo Finance allows ~2000 requests/hour)
+                time.sleep(random.uniform(0.02, 0.05))
         
         # Sort by score descending
         results.sort(key=lambda x: x['total_score'], reverse=True)

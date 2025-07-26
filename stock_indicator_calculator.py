@@ -368,7 +368,7 @@ def calculate_price_change_from_data(data, days):
             return None
             
         data_copy = data.copy()
-        data_copy['Price_Change'] = data_copy['Close'].pct_change(periods=days) * 100
+        data_copy['Price_Change'] = data_copy['Close'].pct_change(periods=days, fill_method=None) * 100
         last_change = data_copy['Price_Change'].dropna().iloc[-1]
         return last_change
     except Exception:

@@ -15,7 +15,7 @@ class AdvancedRecommendationManager:
         self.db_name = "stock_recommendations.db"
         self.screener = EnhancedStrategyScreener()
     
-    def save_tiered_recommendation(self, symbol, analysis_result, stock_info, tier=None):
+    def save_tiered_recommendation(self, symbol, analysis_result, stock_info, tier=None, force_update=False):
         """Save recommendation with tier classification"""
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
@@ -84,25 +84,27 @@ class AdvancedRecommendationManager:
                 
             except sqlite3.IntegrityError as e:
                 if "UNIQUE constraint failed" in str(e):
-                    # Handle duplicate - update if better score
+                    # Handle duplicate - for Friday analysis, always update; otherwise update only if better score
                     clean_symbol = symbol.replace('.NS', '')
                     cursor.execute('''
-                        SELECT id, score FROM recommendations 
+                        SELECT id, score, entry_price FROM recommendations 
                         WHERE symbol = ? AND recommendation_tier = ? AND status = 'ACTIVE' AND is_sold = 0
                     ''', (clean_symbol, tier))
                     
                     existing = cursor.fetchone()
-                    if existing and analysis_result['total_score'] > existing[1]:
-                        # Update with better score
+                    if existing and (force_update or analysis_result['total_score'] > existing[1]):
+                        # Update with new analysis, but preserve original entry_price
+                        original_entry_price = existing[2]  # Keep original entry price
+                        
                         cursor.execute('''
                             UPDATE recommendations SET
-                            score = ?, recommendation = ?, entry_price = ?, target_price = ?, stop_loss = ?,
+                            score = ?, recommendation = ?, target_price = ?, stop_loss = ?,
                             reason = ?, trend_score = ?, momentum_score = ?, rsi_score = ?, 
                             volume_score = ?, price_action_score = ?, recommendation_date = ?
                             WHERE id = ?
                         ''', (
                             analysis_result['total_score'], analysis_result['recommendation'], 
-                            current_price, target_price, stop_loss,
+                            target_price, stop_loss,
                             self.create_reason_summary(analysis_result['breakdown'], analysis_result['total_score']),
                             analysis_result['breakdown']['trend']['weighted'],
                             analysis_result['breakdown']['momentum']['weighted'],
@@ -116,7 +118,8 @@ class AdvancedRecommendationManager:
                         conn.commit()
                         
                         tier_emoji = "🟢" if tier == "STRONG" else "🟡" if tier == "WEAK" else "⚪"
-                        print(f"🔄 {tier_emoji} {tier} Updated existing recommendation: {symbol} - (Score: {existing[1]:.1f} → {analysis_result['total_score']:.1f})")
+                        update_type = "Friday Update" if force_update else "Score Improvement"
+                        print(f"🔄 {tier_emoji} {tier} {update_type}: {symbol} - (Score: {existing[1]:.1f} → {analysis_result['total_score']:.1f}) [Entry: ₹{original_entry_price:.2f} preserved]")
                         
                         return existing[0]
                     else:

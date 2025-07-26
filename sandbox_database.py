@@ -790,6 +790,139 @@ class SandboxDatabase:
                 ORDER BY friday_date DESC
             """)
             return cursor.fetchall()
+    
+    def get_date_range(self) -> Dict[str, str]:
+        """Get the available date range from database"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT 
+                    MIN(friday_date) as min_date,
+                    MAX(friday_date) as max_date
+                FROM friday_stocks_analysis
+            """)
+            result = cursor.fetchone()
+            
+        if result and result[0]:
+            return {
+                'min_date': result[0],
+                'max_date': result[1]
+            }
+        else:
+            return {'min_date': None, 'max_date': None}
+    
+    def get_friday_baseline_for_date(self, target_date: str = None) -> pd.DataFrame:
+        """Get Friday baseline data relative to target date"""
+        if target_date is None:
+            # Use latest Friday if no date specified
+            query = """
+            SELECT 
+                symbol,
+                friday_date,
+                total_score,
+                friday_price,
+                volume_ratio,
+                rsi_value,
+                price_change_1d,
+                trend_score,
+                momentum_score,
+                rsi_score,
+                volume_score,
+                price_action_score,
+                sector,
+                recommendation
+            FROM friday_stocks_analysis 
+            WHERE friday_date = (SELECT MAX(friday_date) FROM friday_stocks_analysis)
+            ORDER BY symbol
+            """
+            with sqlite3.connect(self.db_path) as conn:
+                return pd.read_sql_query(query, conn)
+        else:
+            # Find the most recent Friday before or on the target date
+            query = """
+            SELECT 
+                symbol,
+                friday_date,
+                total_score,
+                friday_price,
+                volume_ratio,
+                rsi_value,
+                price_change_1d,
+                trend_score,
+                momentum_score,
+                rsi_score,
+                volume_score,
+                price_action_score,
+                sector,
+                recommendation
+            FROM friday_stocks_analysis 
+            WHERE friday_date = (
+                SELECT MAX(friday_date) 
+                FROM friday_stocks_analysis 
+                WHERE friday_date <= ?
+            )
+            ORDER BY symbol
+            """
+            with sqlite3.connect(self.db_path) as conn:
+                return pd.read_sql_query(query, conn, params=[target_date])
+    
+    def get_next_friday_date(self, target_date: str) -> Optional[str]:
+        """Get the next available Friday date after target_date"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT DISTINCT friday_date 
+                FROM friday_stocks_analysis 
+                WHERE friday_date >= ?
+                ORDER BY friday_date ASC
+                LIMIT 1
+            """, (target_date,))
+            result = cursor.fetchone()
+            
+        return result[0] if result else None
+    
+    def get_stock_data_for_date(self, symbol: str, friday_date: str) -> Optional[Dict]:
+        """Get stock data for a specific Friday date"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT 
+                    symbol,
+                    friday_date,
+                    total_score,
+                    friday_price,
+                    volume_ratio,
+                    rsi_value,
+                    price_change_1d,
+                    trend_score,
+                    momentum_score,
+                    rsi_score,
+                    volume_score,
+                    price_action_score,
+                    recommendation
+                FROM friday_stocks_analysis 
+                WHERE symbol = ? AND friday_date = ?
+            """, (symbol, friday_date))
+            result = cursor.fetchone()
+            
+        if result:
+            return {
+                'symbol': result[0],
+                'friday_date': result[1],
+                'total_score': result[2],
+                'friday_price': result[3],
+                'volume_ratio': result[4],
+                'rsi_value': result[5],
+                'price_change_1d': result[6],
+                'trend_score': result[7],
+                'momentum_score': result[8],
+                'rsi_score': result[9],
+                'volume_score': result[10],
+                'price_action_score': result[11],
+                'recommendation': result[12]
+            }
+        else:
+            return None
 
 
 # Singleton instance for easy access
