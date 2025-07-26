@@ -1,0 +1,7 @@
+nsetools
+yfinance
+pandas-ta
+numpy
+pandas
+flask
+google-cloud-firestore
