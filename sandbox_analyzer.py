@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from buy_sell_signal_analyzer import BuySellSignalAnalyzer
 
 from stock_list_manager import stock_list_manager
-from sandbox_extended_analyzer import ExtendedHistoryAnalyzer
+
 from sandbox_database import sandbox_db
 import time
 import random
@@ -20,17 +20,10 @@ class SandboxAnalyzer:
     - Allows threshold testing without affecting main system
     """
     
-    def __init__(self, use_extended_history: bool = False):
-        """
-        Initialize SandboxAnalyzer
-        
-        Args:
-            use_extended_history: If True, uses ExtendedHistoryAnalyzer for more comprehensive analysis
-        """
+    def __init__(self):
+        """Initialize SandboxAnalyzer"""
         self.sandbox_db = "sandbox_recommendations.db"
         self.analyzer = BuySellSignalAnalyzer()
-        self.use_extended_history = use_extended_history
-        self.extended_analyzer = ExtendedHistoryAnalyzer() if use_extended_history else None
         self.db = sandbox_db  # Use the singleton database manager
     
 
@@ -90,8 +83,8 @@ class SandboxAnalyzer:
                 friday_price = friday_analysis['price']
                 
                 # Get stock info for company details
-                ticker = yf.Ticker(yahoo_symbol)
-                info = ticker.info
+                    ticker = yf.Ticker(yahoo_symbol)
+                    info = ticker.info
                     
                 # Use the proper Friday analysis data
                 record_data = {
@@ -127,7 +120,7 @@ class SandboxAnalyzer:
                 # Insert into database using the database manager
                 self.db.insert_friday_analysis_record(record_data)
                     
-                successful_analysis += 1
+                    successful_analysis += 1
                 print(f"✅ Score: {friday_analysis['total_score']:.1f} @ ₹{friday_price:.2f}")
                 
                 processed += 1
@@ -1627,7 +1620,7 @@ class SandboxAnalyzer:
                     else:
                         print(f"❌ Invalid choice. Please enter 1-{len(available_fridays)}")
                         return
-                except ValueError:
+        except ValueError:
                     print("❌ Invalid input. Please enter a number, 'latest', or 'all'")
                     return
             
