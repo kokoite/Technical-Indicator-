@@ -77,8 +77,9 @@ def calculate_dma_from_data(data, days):
         return None
 
 def calculate_weekly_macd_from_data(data):
-    """Calculate MACD from pre-fetched data"""
+    """Calculate MACD from pre-fetched data with fallback implementation"""
     try:
+        # Try pandas_ta first
         import pandas_ta as ta
         
         # Resample to weekly data first
@@ -127,11 +128,74 @@ def calculate_weekly_macd_from_data(data):
             'weekly_data_points': len(macd_weekly)
         }
     except Exception:
-        return None
+        # Fallback: Manual MACD calculation
+        try:
+            import pandas as pd
+            
+            # Resample to weekly data first
+            weekly_data = data.resample('W-FRI').agg({
+                'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
+            }).dropna()
+            
+            if len(weekly_data) < 26:  # Need at least 26 weeks for MACD
+                return None
+            
+            # Calculate EMAs manually
+            close_prices = weekly_data['Close']
+            
+            # 12-period EMA
+            ema12 = close_prices.ewm(span=12, adjust=False).mean()
+            # 26-period EMA  
+            ema26 = close_prices.ewm(span=26, adjust=False).mean()
+            
+            # MACD line = EMA12 - EMA26
+            macd_line = ema12 - ema26
+            
+            # Signal line = 9-period EMA of MACD line
+            signal_line = macd_line.ewm(span=9, adjust=False).mean()
+            
+            # Get last 26 weeks of data
+            macd_weekly = macd_line.dropna().tail(26)
+            signal_weekly = signal_line.dropna().tail(26)
+            
+            if len(macd_weekly) == 0 or len(signal_weekly) == 0:
+                return None
+            
+            # Calculate crossovers
+            weekly_crossovers = []
+            if len(macd_weekly) > 1 and len(signal_weekly) > 1:
+                for i in range(1, min(len(macd_weekly), len(signal_weekly))):
+                    try:
+                        prev_macd = macd_weekly.iloc[i-1]
+                        curr_macd = macd_weekly.iloc[i]
+                        prev_signal = signal_weekly.iloc[i-1]
+                        curr_signal = signal_weekly.iloc[i]
+                        
+                        if prev_macd <= prev_signal and curr_macd > curr_signal:
+                            weekly_crossovers.append('bullish_crossover')
+                        elif prev_macd >= prev_signal and curr_macd < curr_signal:
+                            weekly_crossovers.append('bearish_crossover')
+                        else:
+                            weekly_crossovers.append('no_crossover')
+                    except (IndexError, KeyError):
+                        weekly_crossovers.append('no_crossover')
+            
+            return {
+                'macd_line': float(macd_weekly.iloc[-1]),
+                'signal_line': float(signal_weekly.iloc[-1]),
+                'weekly_macd_values': macd_weekly.tolist(),
+                'weekly_signal_values': signal_weekly.tolist(),
+                'weekly_crossovers': weekly_crossovers,
+                'weekly_dates': macd_weekly.index.strftime('%Y-%m-%d').tolist(),
+                'weekly_data_points': len(macd_weekly)
+            }
+        except Exception:
+            return None
 
 def calculate_weekly_rsi_from_data(data):
-    """Calculate RSI from pre-fetched data"""
+    """Calculate RSI from pre-fetched data with fallback implementation"""
     try:
+        # Try pandas_ta first
         import pandas_ta as ta
         
         # Resample to weekly data
@@ -168,7 +232,61 @@ def calculate_weekly_rsi_from_data(data):
             'avg_6m': rsi_weekly.mean()
         }
     except Exception:
-        return None
+        # Fallback: Manual RSI calculation
+        try:
+            import pandas as pd
+            
+            # Resample to weekly data
+            weekly_data = data.resample('W-FRI').agg({
+                'Close': 'last'
+            }).dropna()
+            
+            if len(weekly_data) < 15:  # Need at least 15 weeks for RSI
+                return None
+            
+            close_prices = weekly_data['Close']
+            
+            # Calculate price changes
+            delta = close_prices.diff()
+            
+            # Separate gains and losses
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            
+            # Calculate RS and RSI
+            rs = gain / loss
+            rsi_series = 100 - (100 / (1 + rs))
+            
+            # Get last 26 weeks of RSI data
+            rsi_weekly = rsi_series.dropna().tail(26)
+            
+            if len(rsi_weekly) == 0:
+                return None
+            
+            # Calculate conditions
+            weekly_conditions = []
+            for rsi_val in rsi_weekly:
+                if rsi_val >= 70:
+                    weekly_conditions.append('overbought')
+                elif rsi_val <= 30:
+                    weekly_conditions.append('oversold')
+                elif rsi_val >= 50:
+                    weekly_conditions.append('bullish')
+                else:
+                    weekly_conditions.append('bearish')
+            
+            return {
+                'current_value': float(rsi_weekly.iloc[-1]),
+                'weekly_rsi_values': rsi_weekly.tolist(),
+                'weekly_conditions': weekly_conditions,
+                'weekly_dates': rsi_weekly.index.strftime('%Y-%m-%d').tolist(),
+                'weekly_data_points': len(rsi_weekly),
+                'max_6m': float(rsi_weekly.max()),
+                'min_6m': float(rsi_weekly.min()),
+                'avg_6m': float(rsi_weekly.mean())
+            }
+        except Exception:
+            return None
 
 def calculate_obv_from_data(data):
     """Calculate OBV from pre-fetched data"""

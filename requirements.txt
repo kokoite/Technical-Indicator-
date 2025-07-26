@@ -2,7 +2,7 @@
 yfinance>=0.2.18
 pandas>=1.5.0
 numpy>=1.21.0
-pandas-ta>=0.3.14b
+ta-lib>=0.4.25
 
 # Technical analysis and plotting
 matplotlib>=3.5.0

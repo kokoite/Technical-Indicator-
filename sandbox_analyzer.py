@@ -92,7 +92,7 @@ class SandboxAnalyzer:
                 # Get stock info for company details
                 ticker = yf.Ticker(yahoo_symbol)
                 info = ticker.info
-                
+                    
                 # Use the proper Friday analysis data
                 record_data = {
                     'symbol': symbol,
@@ -126,7 +126,7 @@ class SandboxAnalyzer:
                 
                 # Insert into database using the database manager
                 self.db.insert_friday_analysis_record(record_data)
-                
+                    
                 successful_analysis += 1
                 print(f"✅ Score: {friday_analysis['total_score']:.1f} @ ₹{friday_price:.2f}")
                 
@@ -1578,6 +1578,142 @@ class SandboxAnalyzer:
             print(f"   ⚠️ Error getting price/score for {symbol}: {str(e)}")
             return 0, None
 
+    def show_friday_strong_stocks_dynamic(self, threshold=67, limit=None):
+        """
+        Show strong stocks from any Friday in the database (user selectable)
+        
+        Args:
+            threshold: Minimum score threshold (default 67 for strong stocks)
+            limit: Maximum number of stocks to show (None for all)
+        """
+        print(f"\n🎯 STRONG STOCKS FROM ANY FRIDAY (Score ≥ {threshold})")
+        print("=" * 70)
+        
+        try:
+            # Get all available Friday dates from database
+            available_fridays = self.db.get_available_friday_dates()
+            if not available_fridays:
+                print("❌ No Friday analysis data found in database.")
+                print("   Run Option 1 (Data Population) first to populate historical data.")
+                return
+            
+            print("📅 Available Friday Analysis Dates:")
+            print(f"{'#':<3} {'Date':<12} {'Total Stocks':<12}")
+            print("-" * 30)
+            
+            for i, (friday_date, stock_count) in enumerate(available_fridays, 1):
+                print(f"{i:<3} {friday_date:<12} {stock_count:<12}")
+            
+            print()
+            print("Options:")
+            print("  Enter number (1-{}) to select a specific Friday".format(len(available_fridays)))
+            print("  Enter 'latest' or 'l' for most recent Friday")
+            print("  Enter 'all' or 'a' to show from all Fridays")
+            
+            choice = input("\nYour choice: ").strip().lower()
+            
+            selected_friday = None
+            show_all = False
+            
+            if choice in ['latest', 'l']:
+                selected_friday = available_fridays[0][0]  # Most recent
+            elif choice in ['all', 'a']:
+                show_all = True
+            else:
+                try:
+                    choice_num = int(choice)
+                    if 1 <= choice_num <= len(available_fridays):
+                        selected_friday = available_fridays[choice_num - 1][0]
+                    else:
+                        print(f"❌ Invalid choice. Please enter 1-{len(available_fridays)}")
+                        return
+                except ValueError:
+                    print("❌ Invalid input. Please enter a number, 'latest', or 'all'")
+                    return
+            
+            if show_all:
+                print(f"\n📊 STRONG STOCKS FROM ALL FRIDAYS (Score ≥ {threshold})")
+                print("=" * 80)
+                
+                for friday_date, _ in available_fridays:
+                    print(f"\n📅 {friday_date}:")
+                    print("-" * 40)
+                    
+                    strong_stocks = self.db.get_friday_strong_stocks_from_table(
+                        friday_date_str=friday_date, 
+                        threshold=threshold, 
+                        limit=limit
+                    )
+                    
+                    if not strong_stocks:
+                        print(f"   No stocks with score ≥ {threshold}")
+                        continue
+                    
+                    # Show top 5 for each Friday to keep output manageable
+                    display_stocks = strong_stocks[:5] if len(strong_stocks) > 5 else strong_stocks
+                    
+                    for i, stock in enumerate(display_stocks, 1):
+                        symbol = stock['symbol']
+                        score = stock['friday_score']
+                        price = stock['friday_price']
+                        
+                        if score >= 80:
+                            score_display = f"🟢 {score:.1f}"
+                        elif score >= 70:
+                            score_display = f"🟡 {score:.1f}"
+                        else:
+                            score_display = f"⚪ {score:.1f}"
+                        
+                        print(f"   {i}. {symbol:<10} {score_display:<8} ₹{price:.2f}")
+                    
+                    if len(strong_stocks) > 5:
+                        print(f"   ... and {len(strong_stocks) - 5} more stocks")
+            
+            else:
+                print(f"\n📅 Analysis Date: {selected_friday}")
+                print()
+                
+                # Get strong stocks for selected Friday
+                strong_stocks = self.db.get_friday_strong_stocks_from_table(
+                    friday_date_str=selected_friday, 
+                    threshold=threshold, 
+                    limit=limit
+                )
+                
+                if not strong_stocks:
+                    print(f"❌ No stocks found with score ≥ {threshold} for {selected_friday}")
+                    return
+                
+                print(f"📊 Found {len(strong_stocks)} strong stocks:")
+                print()
+                
+                # Display header
+                print(f"{'Rank':<4} {'Symbol':<12} {'Score':<6} {'Price':<8} {'Recommendation':<15}")
+                print("-" * 60)
+                
+                for i, stock in enumerate(strong_stocks, 1):
+                    symbol = stock['symbol']
+                    score = stock['friday_score']
+                    price = stock['friday_price']
+                    recommendation = stock['friday_recommendation'][:14]  # Truncate if too long
+                    
+                    # Color coding based on score
+                    if score >= 80:
+                        score_display = f"🟢 {score:.1f}"
+                    elif score >= 70:
+                        score_display = f"🟡 {score:.1f}"
+                    else:
+                        score_display = f"⚪ {score:.1f}"
+                    
+                    print(f"{i:<4} {symbol:<12} {score_display:<6} ₹{price:<7.2f} {recommendation:<15}")
+                
+                print()
+                print(f"💡 These {len(strong_stocks)} stocks had scores ≥ {threshold} on {selected_friday}")
+                print("   You can use Option 2 (Dynamic Analysis) to see their current performance.")
+            
+        except Exception as e:
+            print(f"❌ Error retrieving Friday stocks: {str(e)}")
+
 def main():
     """Main function for sandbox analyzer - Simplified version"""
     analyzer = SandboxAnalyzer()
@@ -1586,9 +1722,10 @@ def main():
     print("=" * 50)
     print("1. One-time Data Population (Populate historical Fridays)")
     print("2. Dynamic Threshold Analysis (Any past Friday → Today)")
-    print("3. Exit")
+    print("3. Show Strong Stocks from Any Friday")
+    print("4. Exit")
     
-    choice = input("\nSelect option (1/2/3): ").strip()
+    choice = input("\nSelect option (1/2/3/4): ").strip()
     
     if choice == '1':
         # One-time data population with smart duplicate handling
@@ -1638,6 +1775,18 @@ def main():
             print("Invalid input")
     
     elif choice == '3':
+        # Show strong stocks from any Friday
+        try:
+            threshold = float(input("Enter minimum score threshold (default 67): ") or "67")
+            limit = input("Enter maximum number of stocks to show (press Enter for all): ").strip()
+            limit = int(limit) if limit else None
+            
+            analyzer.show_friday_strong_stocks_dynamic(threshold=threshold, limit=limit)
+            
+        except ValueError:
+            print("Invalid input")
+    
+    elif choice == '4':
         print("👋 Goodbye!")
     
     else:

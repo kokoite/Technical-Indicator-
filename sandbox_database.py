@@ -773,6 +773,23 @@ class SandboxDatabase:
             cursor.execute("SELECT COUNT(*) FROM friday_stocks_analysis WHERE symbol = ? AND friday_date = ?", 
                           (symbol, friday_date))
             return cursor.fetchone()[0]
+    
+    def get_available_friday_dates(self) -> List[Tuple[str, int]]:
+        """
+        Get all available Friday dates with stock counts from the database
+        
+        Returns:
+            List of tuples: (friday_date, stock_count) ordered by date DESC
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT DISTINCT friday_date, COUNT(*) as stock_count
+                FROM friday_stocks_analysis 
+                GROUP BY friday_date
+                ORDER BY friday_date DESC
+            """)
+            return cursor.fetchall()
 
 
 # Singleton instance for easy access
