@@ -200,19 +200,19 @@ pip install -r requirements.txt
 ```
 
 **2. Database Locked**
-```bash
+    ```bash
 # Close any open database connections
 # Restart the application
-```
+    ```
 
 **3. API Rate Limits**
-```bash
+    ```bash
 # The system includes built-in rate limiting
 # If you encounter issues, increase the delay in the code
-```
+    ```
 
 **4. Memory Issues with Large Datasets**
-```bash
+    ```bash
 # Use the limit parameter to process fewer stocks
 analyzer.populate_historical_fridays_optimized(limit=100)
 ```

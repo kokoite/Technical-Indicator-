@@ -77,6 +77,25 @@ class RecommendationsDatabase:
             )
         ''')
         
+        # Sold stocks watchlist table for re-entry monitoring
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS sold_stocks_watchlist (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                company_name TEXT,
+                sector TEXT,
+                sell_date TEXT NOT NULL,
+                sell_price REAL NOT NULL,
+                sell_reason TEXT NOT NULL,
+                original_entry_price REAL,
+                original_score REAL,
+                last_check_date TEXT,
+                last_check_score REAL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(symbol)
+            )
+        ''')
+        
         conn.commit()
         conn.close()
         print("✅ Recommendations database initialized successfully")

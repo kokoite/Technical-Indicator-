@@ -45,6 +45,10 @@ class DailyMonitor:
         print("\n🚀 STEP 2: Checking WEAK recommendations for promotion...")
         self.check_weak_promotions()
         
+        # Step 2.5: Check sold stocks for re-entry
+        print("\n🔄 STEP 2.5: Checking sold stocks for re-entry...")
+        self.check_sold_stocks_reentry()
+        
         # Step 3: Update performance data
         print("\n📊 STEP 3: Updating performance data...")
         self.update_performance_data()
@@ -110,38 +114,46 @@ class DailyMonitor:
                 current_price = stock_data['Close'].iloc[-1]
                 price_change_pct = ((current_price - entry_price) / entry_price) * 100
                 
-                # Check selling criteria - More aggressive stop losses
-                if price_change_pct <= -7:  # 7% loss - immediate sell
+                # Get current score for all stocks (needed for hard score check)
+                stock_info = {
+                    'symbol': symbol,
+                    'current_price': current_price,
+                    'company_name': rec.get('company_name', symbol),
+                    'sector': rec.get('sector', 'Unknown')
+                }
+                
+                analysis = self.screener.analyze_single_stock(stock_info)
+                current_score = analysis['total_score'] if analysis else None
+                
+                # Check selling criteria - Enhanced with hard score check
+                if current_score is not None and current_score < 50:  # HARD SCORE CHECK - New!
+                    reason = f"Hard score check: Current score {current_score:.1f} < 50 (fundamentals deteriorated)"
+                    print(f"🔴 {symbol}: Score {current_score:.1f} < 50 - SELLING (hard score check)")
+                    if self.manager.sell_strong_recommendation(symbol, current_price, reason):
+                        sells_executed += 1
+                        self.todays_sales.append(f"{symbol} (Score: {current_score:.1f})")
+                elif price_change_pct <= -7:  # 7% loss - immediate sell
                     reason = f"Aggressive stop loss: {price_change_pct:.2f}% loss (7% threshold)"
                     print(f"🔴 {symbol}: Price down {price_change_pct:.2f}% - SELLING (7% stop loss)")
                     if self.manager.sell_strong_recommendation(symbol, current_price, reason):
                         sells_executed += 1
                         self.todays_sales.append(f"{symbol} ({price_change_pct:+.1f}%)")
-                elif price_change_pct <= -5:  # 5% loss - check indicators
+                elif price_change_pct <= -5:  # 5% loss - check indicators (lowered threshold from 40 to 35)
                     print(f"🟡 {symbol}: Price down {price_change_pct:.2f}% - Checking indicators...")
                     
-                    # Re-analyze with current indicators
-                    stock_info = {
-                        'symbol': symbol,
-                        'current_price': current_price,
-                        'company_name': rec.get('company_name', symbol),
-                        'sector': rec.get('sector', 'Unknown')
-                    }
-                    
-                    analysis = self.screener.analyze_single_stock(stock_info)
-                    
-                    if analysis and analysis['total_score'] < 40:  # Indicators deteriorated (raised from 35 to 40)
-                        reason = f"Stop loss: {price_change_pct:.2f}% loss + indicators deteriorated (Score: {analysis['total_score']:.1f})"
+                    if current_score is not None and current_score < 35:  # Indicators deteriorated (lowered from 40 to 35)
+                        reason = f"Stop loss: {price_change_pct:.2f}% loss + indicators deteriorated (Score: {current_score:.1f})"
                         print(f"🔴 {symbol}: Indicators also weak - SELLING")
                         if self.manager.sell_strong_recommendation(symbol, current_price, reason):
                             sells_executed += 1
                             self.todays_sales.append(f"{symbol} ({price_change_pct:+.1f}%)")
                     else:
-                        score_text = f"{analysis['total_score']:.1f}" if analysis else "N/A"
+                        score_text = f"{current_score:.1f}" if current_score is not None else "N/A"
                         print(f"⚪ {symbol}: Price down but indicators still OK (Score: {score_text}) - HOLDING")
                 else:
                     status_emoji = "🟢" if price_change_pct > 0 else "🟡"
-                    print(f"{status_emoji} {symbol}: {price_change_pct:+.2f}% - Holding")
+                    score_text = f" (Score: {current_score:.1f})" if current_score is not None else ""
+                    print(f"{status_emoji} {symbol}: {price_change_pct:+.2f}%{score_text} - Holding")
                 
             except Exception as e:
                 print(f"❌ Error monitoring {symbol}: {str(e)}")
@@ -243,6 +255,119 @@ class DailyMonitor:
         
         print(f"🚀 BATCH PROMOTION CHECK COMPLETED: {promotions_executed} stocks promoted")
         print(f"⚡ Speed improvement: ~10x faster than individual requests!")
+    
+    def check_sold_stocks_reentry(self):
+        """Check sold stocks in watchlist for re-entry when score >= 60"""
+        sold_stocks = self.manager.get_sold_stocks_watchlist()
+        
+        if sold_stocks.empty:
+            print("📝 No sold stocks in watchlist for re-entry monitoring")
+            return
+        
+        print(f"📊 Checking {len(sold_stocks)} sold stocks for re-entry...")
+        print("🚀 Using batch requests for price updates...")
+        
+        # Get all symbols for batch request
+        symbols = sold_stocks['symbol'].tolist()
+        yahoo_symbols = [f"{symbol}.NS" for symbol in symbols]
+        
+        # Batch get current prices
+        try:
+            print(f"📦 Getting current prices for {len(symbols)} sold stocks...")
+            batch_data = yf.download(" ".join(yahoo_symbols), period="1d", group_by='ticker', auto_adjust=True)
+            
+            if batch_data.empty:
+                print("⚠️ Batch price data returned empty")
+                return
+            
+        except Exception as e:
+            print(f"❌ Batch price fetch failed: {str(e)}")
+            return
+        
+        reentries_executed = 0
+        
+        for _, stock in sold_stocks.iterrows():
+            symbol = stock['symbol']
+            
+            try:
+                # Get current price from batch data
+                yahoo_symbol = f"{symbol}.NS"
+                
+                # Extract data from batch result
+                if len(symbols) == 1:
+                    stock_data = batch_data
+                else:
+                    if yahoo_symbol in batch_data.columns.get_level_values(0):
+                        stock_data = batch_data[yahoo_symbol]
+                    else:
+                        print(f"⚠️ No price data for {symbol}")
+                        continue
+                
+                if stock_data is None or stock_data.empty or 'Close' not in stock_data.columns:
+                    print(f"⚠️ No price data for {symbol}")
+                    continue
+                
+                current_price = stock_data['Close'].iloc[-1]
+                
+                # Re-analyze with current indicators
+                stock_info = {
+                    'symbol': symbol,
+                    'current_price': current_price,
+                    'company_name': stock.get('company_name', symbol),
+                    'sector': stock.get('sector', 'Unknown')
+                }
+                
+                analysis = self.screener.analyze_single_stock(stock_info)
+                
+                if analysis and analysis['total_score'] >= 60:  # Re-entry score threshold
+                    print(f"🔄 {symbol}: Score {analysis['total_score']:.1f} >= 60 - RE-ENTERING as STRONG")
+                    
+                    # Create new STRONG recommendation
+                    stock_info = {
+                        'symbol': symbol,
+                        'current_price': current_price,
+                        'company_name': stock.get('company_name', symbol),
+                        'sector': stock.get('sector', 'Unknown')
+                    }
+                    
+                    if self.manager.save_tiered_recommendation(symbol, analysis, stock_info, tier='STRONG'):
+                        # Remove from sold watchlist
+                        self.manager.remove_from_sold_watchlist(symbol)
+                        reentries_executed += 1
+                        self.todays_promotions.append(f"{symbol} (Re-entry: {analysis['total_score']:.1f})")
+                else:
+                    score_text = f"{analysis['total_score']:.1f}" if analysis else "N/A"
+                    print(f"📊 {symbol}: Score {score_text} < 60 - Still in watchlist")
+                    
+                    # Update last check info in watchlist
+                    self.update_sold_watchlist_check(symbol, analysis['total_score'] if analysis else None)
+                
+            except Exception as e:
+                print(f"❌ Error checking {symbol}: {str(e)}")
+        
+        print(f"🚀 BATCH RE-ENTRY CHECK COMPLETED: {reentries_executed} stocks re-entered")
+        print(f"⚡ Speed improvement: ~10x faster than individual requests!")
+    
+    def update_sold_watchlist_check(self, symbol, current_score):
+        """Update the last check information for a sold stock"""
+        conn = sqlite3.connect(self.manager.db_name)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                UPDATE sold_stocks_watchlist 
+                SET last_check_date = ?, last_check_score = ?
+                WHERE symbol = ?
+            ''', (
+                datetime.now().strftime('%Y-%m-%d'),
+                current_score,
+                symbol.replace('.NS', '')
+            ))
+            conn.commit()
+        except Exception as e:
+            print(f"⚠️ Error updating watchlist check for {symbol}: {str(e)}")
+        finally:
+            conn.close()
     
     def update_performance_data(self):
         """Update performance data for all active recommendations using batch requests"""

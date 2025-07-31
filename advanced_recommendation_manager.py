@@ -229,7 +229,7 @@ class AdvancedRecommendationManager:
         try:
             # Get the recommendation details
             cursor.execute('''
-                SELECT entry_price FROM recommendations 
+                SELECT entry_price, company_name, sector, score FROM recommendations 
                 WHERE symbol = ? AND recommendation_tier = 'STRONG' AND status = 'ACTIVE'
             ''', (symbol.replace('.NS', ''),))
             
@@ -237,7 +237,7 @@ class AdvancedRecommendationManager:
             if not result:
                 return False
             
-            entry_price = result[0]
+            entry_price, company_name, sector, original_score = result
             
             # Calculate returns
             return_pct = ((current_price - entry_price) / entry_price) * 100
@@ -265,16 +265,90 @@ class AdvancedRecommendationManager:
             
             if cursor.rowcount > 0:
                 conn.commit()
+                conn.close()  # Close connection before calling other method
+                
                 profit_emoji = "💰" if return_pct > 0 else "📉"
                 print(f"🔴 SOLD: {symbol} - {return_pct:+.2f}% (₹{money_made:+.2f}) {profit_emoji} - {reason}")
+                
+                # Add to sold stocks watchlist for re-entry monitoring
+                self.add_to_sold_watchlist(symbol, company_name, sector, current_price, reason, entry_price, original_score)
                 return True
                 
         except Exception as e:
             print(f"❌ Error selling {symbol}: {str(e)}")
-        finally:
             conn.close()
         
         return False
+    
+    def add_to_sold_watchlist(self, symbol, company_name, sector, sell_price, sell_reason, original_entry_price, original_score):
+        """Add a sold stock to the watchlist for re-entry monitoring"""
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                INSERT OR REPLACE INTO sold_stocks_watchlist 
+                (symbol, company_name, sector, sell_date, sell_price, sell_reason, 
+                 original_entry_price, original_score, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                symbol.replace('.NS', ''),
+                company_name,
+                sector,
+                datetime.now().strftime('%Y-%m-%d'),
+                sell_price,
+                sell_reason,
+                original_entry_price,
+                original_score,
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            ))
+            
+            conn.commit()
+            print(f"📋 Added {symbol} to sold stocks watchlist for re-entry monitoring")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error adding {symbol} to watchlist: {str(e)}")
+            return False
+        finally:
+            conn.close()
+    
+    def get_sold_stocks_watchlist(self):
+        """Get all stocks in the sold watchlist for re-entry monitoring"""
+        conn = sqlite3.connect(self.db_name)
+        try:
+            return pd.read_sql_query('''
+                SELECT * FROM sold_stocks_watchlist 
+                ORDER BY sell_date DESC
+            ''', conn)
+        except Exception as e:
+            print(f"❌ Error getting sold watchlist: {str(e)}")
+            return pd.DataFrame()
+        finally:
+            conn.close()
+    
+    def remove_from_sold_watchlist(self, symbol):
+        """Remove a stock from sold watchlist (when re-entered)"""
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                DELETE FROM sold_stocks_watchlist 
+                WHERE symbol = ?
+            ''', (symbol.replace('.NS', ''),))
+            
+            if cursor.rowcount > 0:
+                conn.commit()
+                print(f"🗑️ Removed {symbol} from sold stocks watchlist (re-entered)")
+                return True
+            return False
+            
+        except Exception as e:
+            print(f"❌ Error removing {symbol} from watchlist: {str(e)}")
+            return False
+        finally:
+            conn.close()
     
     def get_recommendations_by_tier(self, tier, days_back=None):
         """Get recommendations by tier - monitors ALL active positions regardless of age"""

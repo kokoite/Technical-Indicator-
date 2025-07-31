@@ -838,33 +838,72 @@ class SandboxDatabase:
             with sqlite3.connect(self.db_path) as conn:
                 return pd.read_sql_query(query, conn)
         else:
-            # Find the most recent Friday before or on the target date
-            query = """
-            SELECT 
-                symbol,
-                friday_date,
-                total_score,
-                friday_price,
-                volume_ratio,
-                rsi_value,
-                price_change_1d,
-                trend_score,
-                momentum_score,
-                rsi_score,
-                volume_score,
-                price_action_score,
-                sector,
-                recommendation
-            FROM friday_stocks_analysis 
-            WHERE friday_date = (
-                SELECT MAX(friday_date) 
-                FROM friday_stocks_analysis 
-                WHERE friday_date <= ?
-            )
-            ORDER BY symbol
-            """
+            # Check if target_date is a Friday by seeing if it exists in our Friday data
+            from datetime import datetime
+            target_dt = datetime.strptime(target_date, '%Y-%m-%d')
+            is_friday = target_dt.weekday() == 4  # Friday is weekday 4
+            
             with sqlite3.connect(self.db_path) as conn:
-                return pd.read_sql_query(query, conn, params=[target_date])
+                # Check if target_date exists in our Friday data
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM friday_stocks_analysis WHERE friday_date = ?", (target_date,))
+                target_is_friday_in_db = cursor.fetchone()[0] > 0
+                
+                if is_friday and target_is_friday_in_db:
+                    # Target date IS a Friday with data - get the PREVIOUS Friday for comparison
+                    print(f"🗓️  Target date {target_date} is a Friday - using previous Friday as baseline")
+                    query = """
+                    SELECT 
+                        symbol,
+                        friday_date,
+                        total_score,
+                        friday_price,
+                        volume_ratio,
+                        rsi_value,
+                        price_change_1d,
+                        trend_score,
+                        momentum_score,
+                        rsi_score,
+                        volume_score,
+                        price_action_score,
+                        sector,
+                        recommendation
+                    FROM friday_stocks_analysis 
+                    WHERE friday_date = (
+                        SELECT MAX(friday_date) 
+                        FROM friday_stocks_analysis 
+                        WHERE friday_date < ?
+                    )
+                    ORDER BY symbol
+                    """
+                    return pd.read_sql_query(query, conn, params=[target_date])
+                else:
+                    # Target date is NOT a Friday or has no data - get most recent Friday before or on target date
+                    query = """
+                    SELECT 
+                        symbol,
+                        friday_date,
+                        total_score,
+                        friday_price,
+                        volume_ratio,
+                        rsi_value,
+                        price_change_1d,
+                        trend_score,
+                        momentum_score,
+                        rsi_score,
+                        volume_score,
+                        price_action_score,
+                        sector,
+                        recommendation
+                    FROM friday_stocks_analysis 
+                    WHERE friday_date = (
+                        SELECT MAX(friday_date) 
+                        FROM friday_stocks_analysis 
+                        WHERE friday_date <= ?
+                    )
+                    ORDER BY symbol
+                    """
+                    return pd.read_sql_query(query, conn, params=[target_date])
     
     def get_next_friday_date(self, target_date: str) -> Optional[str]:
         """Get the next available Friday date after target_date"""

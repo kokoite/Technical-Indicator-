@@ -80,9 +80,9 @@ class SandboxAnalyzer:
                 
                 for symbol in batch_symbols:
                     try:
-                        yahoo_symbol = f"{symbol}.NS"
-                        ticker = yf.Ticker(yahoo_symbol)
-                        info = ticker.info
+                yahoo_symbol = f"{symbol}.NS"
+                    ticker = yf.Ticker(yahoo_symbol)
+                    info = ticker.info
                         stock_info_batch[symbol] = {
                             'company_name': info.get('longName', symbol),
                             'sector': info.get('sector', 'Unknown'),
@@ -154,7 +154,7 @@ class SandboxAnalyzer:
                     print(f"✅ Score: {friday_analysis['total_score']:.1f}")
                 else:
                     print("❌ Database save failed")
-                    
+                
             except Exception as e:
                 print(f"❌ Error: {str(e)}")
         
@@ -164,7 +164,7 @@ class SandboxAnalyzer:
         print(f"⏰ Time taken: {elapsed_time:.1f} seconds")
         print(f"📈 Rate: {successful_inserts/elapsed_time:.1f} stocks/second")
         print(f"⚡ Batch optimization improved stock info fetching speed!")
-
+    
     def analyze_stock_for_multiple_fridays(self, symbol, friday_dates):
         """
         Analyze a single stock for multiple Friday dates using historical data clipping.
@@ -622,19 +622,19 @@ class SandboxAnalyzer:
                     current_price = price_batch.get(symbol)
                     if not current_price:
                         # Fallback to individual call if batch failed
-                        ticker = yf.Ticker(yahoo_symbol)
-                        hist = ticker.history(period="1d")
-                        if not hist.empty:
-                            current_price = hist['Close'].iloc[-1]
+                    ticker = yf.Ticker(yahoo_symbol)
+                    hist = ticker.history(period="1d")
+                    if not hist.empty:
+                        current_price = hist['Close'].iloc[-1]
                         else:
                             print("❌ No price data")
                             continue
-                    
-                    # Get Friday price (last Friday's closing price)
-                    friday_price = self.get_last_friday_price(yahoo_symbol)
-                    if friday_price == 0:  # Fallback to current price if Friday price not available
-                        friday_price = current_price
-                    
+                        
+                        # Get Friday price (last Friday's closing price)
+                        friday_price = self.get_last_friday_price(yahoo_symbol)
+                        if friday_price == 0:  # Fallback to current price if Friday price not available
+                            friday_price = current_price
+                        
                     # Get stock info from batch
                     stock_info_data = info_batch.get(symbol, {
                         'company_name': symbol,
@@ -642,25 +642,25 @@ class SandboxAnalyzer:
                         'market_cap': 0
                     })
                     
-                    # Create stock info
-                    stock_info = {
-                        'symbol': symbol,
+                        # Create stock info
+                        stock_info = {
+                            'symbol': symbol,
                         'company_name': stock_info_data['company_name'],
-                        'current_price': current_price,
-                        'friday_price': friday_price,
+                            'current_price': current_price,
+                            'friday_price': friday_price,
                         'market_cap': stock_info_data['market_cap'],
                         'sector': stock_info_data['sector']
-                    }
-                    
-                    # Classify by tier using threshold
-                    score = analysis_result['total_score']
-                    if score >= threshold:
-                        tier = 'STRONG'
-                    elif score >= 50:
-                        tier = 'WEAK'
-                    else:
-                        tier = 'HOLD'
-                    
+                        }
+                        
+                        # Classify by tier using threshold
+                        score = analysis_result['total_score']
+                        if score >= threshold:
+                            tier = 'STRONG'
+                        elif score >= 50:
+                            tier = 'WEAK'
+                        else:
+                            tier = 'HOLD'
+                        
                     result = {
                         'symbol': symbol,
                         'total_score': score,
@@ -1031,8 +1031,8 @@ class SandboxAnalyzer:
             
             if batch_data.empty:
                 print("⚠️ Batch price data returned empty")
-                return
-            
+            return
+        
         except Exception as e:
             print(f"❌ Batch price fetch failed: {str(e)}")
             return
@@ -1326,7 +1326,7 @@ class SandboxAnalyzer:
             print("   1. Use update_mode='force' to overwrite all data")
             print("   2. Investigate why historical data is changing")
             print("   3. Use force_refresh=True to clear and rebuild all data")
-
+    
     def get_friday_strong_stocks_from_table_by_date(self, friday_date, threshold=67, limit=None):
         """
         Get STRONG stocks from friday_stocks_analysis table for a specific date
@@ -1534,7 +1534,7 @@ class SandboxAnalyzer:
                     if period_record['is_sold']:
                         status = f"🔴 SOLD (Score: {score} < {threshold})"
                         period_sold += 1
-                    else:
+        else:
                         status = "🟢 ACTIVE"
                         period_active += 1
                     
@@ -1783,8 +1783,8 @@ class SandboxAnalyzer:
                 
                 if not strong_stocks:
                     print(f"❌ No stocks found with score ≥ {threshold} for {selected_friday}")
-                    return
-                
+            return
+        
                 print(f"📊 Found {len(strong_stocks)} strong stocks:")
                 print()
                 
